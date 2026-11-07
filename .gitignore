@@ -1,0 +1,3 @@
+__pycache__/
+# surowe strony z EP - potrzebne tylko lokalnie do fetch_prospects.py
+data/*prospects.html
