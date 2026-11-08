@@ -7,52 +7,108 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<meta name="theme-color" content="#111827">
+<meta name="theme-color" content="#343330">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Prospects">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,800&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#fff; --fg:#16181d; --muted:#6b7280; --card:#f4f5f7; --line:#e3e5e8; --accent:#1d4ed8; --star:#d97706; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#111317; --fg:#e8eaed; --muted:#9aa0a6; --card:#1b1e24; --line:#2a2e36; --accent:#7aa2ff; --star:#fbbf24; }
+  :root {
+    --ink: #343330;
+    --green: #0CCE6B;
+    --lime: #DCED31;
+    --steel: #759FBC;
+    --lavender: #B9B8D3;
+
+    --bg: #F6F6F3;
+    --surface: #FFFFFF;
+    --line: #E4E3EC;
+    --fg: var(--ink);
+    --muted: #7A7976;
+    --chip: #EDEDF4;
   }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #2A2927;
+      --surface: #343330;
+      --line: #42413D;
+      --fg: #F4F4F0;
+      --muted: var(--lavender);
+      --chip: #403F3B;
+    }
+  }
+
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; }
-  main { max-width: 960px; margin: 0 auto; padding: 16px; }
-  h1 { font-size: 20px; margin: 0 0 12px; }
-  .controls { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:8px; margin-bottom:8px; }
-  select, input { width:100%; padding:8px; font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-radius:6px; }
-  .years { display:flex; gap:12px; flex-wrap:wrap; align-items:center; color:var(--muted); margin-bottom:16px; }
-  .years label { display:flex; gap:4px; align-items:center; cursor:pointer; }
-  .cols { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
-  @media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
-  h2 { font-size:16px; margin:0 0 8px; padding-bottom:6px; border-bottom:2px solid var(--line); }
-  .p { display:grid; grid-template-columns: 64px 1fr; gap:10px; align-items:center; padding:8px; background:var(--card); border-radius:8px; margin-bottom:6px; }
-  .num { font-size:26px; font-weight:700; text-align:center; font-variant-numeric: tabular-nums; }
-  .num.none { font-size:14px; color:var(--muted); }
-  .name { font-weight:600; }
-  .name a { color:inherit; text-decoration:none; }
-  .name a:hover { color:var(--accent); text-decoration:underline; }
-  .meta { color:var(--muted); font-size:13px; }
-  .tag { display:inline-block; font-size:12px; padding:0 6px; border-radius:4px; border:1px solid var(--line); margin-left:4px; }
-  .top { color:var(--star); border-color:var(--star); }
-  .empty { color:var(--muted); padding:8px 0; }
-  footer { color:var(--muted); font-size:12px; margin-top:24px; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 500 15px/1.4 "DM Sans", system-ui, sans-serif;
+    font-style: normal; text-transform: none; letter-spacing: -0.01em;
+  }
+  main { max-width: 980px; margin: 0 auto; padding: 20px 16px 40px; }
+
+  h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.03em; margin: 0 0 20px; display: flex; align-items: center; gap: 10px; }
+  h1::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--green); }
+
+  .controls { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,2fr) minmax(0,2fr); gap: 8px; margin-bottom: 12px; }
+  @media (max-width: 640px) { .controls { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } .controls #league { grid-column: 1 / -1; } }
+  select {
+    appearance: none; -webkit-appearance: none; width: 100%;
+    padding: 12px 36px 12px 14px; font: inherit; font-weight: 700; color: var(--fg);
+    background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23759FBC' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center;
+    border: 1px solid var(--line); border-radius: 12px; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  select:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+
+  .years { display: flex; gap: 6px; margin-bottom: 24px; }
+  .years button {
+    font: inherit; font-weight: 700; padding: 7px 14px; border-radius: 999px; cursor: pointer;
+    background: transparent; color: var(--muted); border: 1px solid var(--line);
+  }
+  .years button[aria-pressed="true"] { background: var(--green); color: var(--ink); border-color: var(--green); }
+
+  .cols { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 24px; }
+  @media (max-width: 640px) { .cols { grid-template-columns: minmax(0,1fr); gap: 28px; } }
+  h2 { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 12px; padding-bottom: 10px; position: relative; }
+  h2::after { content: ""; position: absolute; left: 0; bottom: 0; width: 32px; height: 4px; border-radius: 2px; background: var(--green); }
+
+  .p {
+    display: grid; grid-template-columns: 56px minmax(0,1fr); gap: 14px; align-items: center;
+    padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 8px;
+  }
+  .num {
+    height: 56px; border-radius: 10px; display: grid; place-items: center;
+    background: var(--green); color: var(--ink);
+    font-size: 24px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
+  }
+  .p.top .num { background: var(--lime); }
+  .num.none { background: var(--chip); color: var(--muted); }
+  .name { font-size: 16px; font-weight: 700; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .name a { color: inherit; text-decoration: none; }
+  .name a:hover { color: var(--steel); }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .chip { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--fg); }
+  .chip.year { background: transparent; color: var(--steel); box-shadow: inset 0 0 0 1px var(--steel); }
+  .chip.top { background: var(--lime); color: var(--ink); }
+
+  .empty { color: var(--muted); padding: 8px 0; }
 </style>
 </head>
 <body>
 <main>
   <h1>Prospects to Watch</h1>
   <div class="controls">
-    <select id="league"></select>
-    <select id="teamA"></select>
-    <select id="teamB"></select>
+    <select id="league" aria-label="Liga"></select>
+    <select id="teamA" aria-label="Drużyna 1"></select>
+    <select id="teamB" aria-label="Drużyna 2"></select>
   </div>
   <div class="years" id="years"></div>
   <div class="cols">
     <section id="colA"></section>
     <section id="colB"></section>
   </div>
-  <footer id="footer"></footer>
 </main>
 
 <script src="data/prospects.js"></script>
@@ -77,8 +133,7 @@ const leagueNames = Object.keys(D.leagues).sort((a, b) =>
 
 function renderLeagues() {
   const sel = store.get("league", leagueNames[0]);
-  $("league").innerHTML = leagueNames.map(l =>
-    opt(l, `${l} (${Object.values(D.leagues[l]).flat().length})`, sel)).join("");
+  $("league").innerHTML = leagueNames.map(l => opt(l, l, sel)).join("");
 }
 
 function renderTeams() {
@@ -86,23 +141,22 @@ function renderTeams() {
   const saved = store.get("teams:" + $("league").value, []);
   for (const [i, id] of [[0, "teamA"], [1, "teamB"]]) {
     const sel = saved[i] ?? "";
-    $(id).innerHTML = opt("", i ? "— drużyna 2 —" : "— drużyna 1 —", sel) +
-      teams.map(t => opt(t, `${t} (${D.leagues[$("league").value][t].length})`, sel)).join("");
+    $(id).innerHTML = opt("", `Drużyna ${i + 1}`, sel) + teams.map(t => opt(t, t, sel)).join("");
   }
 }
 
 function renderYears() {
-  $("years").innerHTML = "Draft: " + years.map(y =>
-    `<label><input type="checkbox" value="${y}"${activeYears.has(y) ? " checked" : ""}> ${y}</label>`).join("");
+  $("years").innerHTML = years.map(y =>
+    `<button type="button" data-year="${y}" aria-pressed="${activeYears.has(y)}">${y}</button>`).join("");
 }
 
 function playerCard(p) {
   const top = p.tier.toLowerCase().startsWith("top");
-  return `<div class="p">
-    <div class="num${p.number ? "" : " none"}">${p.number ? "#" + esc(p.number) : "?"}</div>
+  return `<div class="p${top ? " top" : ""}">
+    <div class="num${p.number ? "" : " none"}">${p.number ? esc(p.number) : "?"}</div>
     <div>
       <div class="name"><a href="${esc(p.ep_url)}" target="_blank" rel="noopener">${esc(p.name)}</a>
-        <span class="tag">${p.draft}</span>${top ? '<span class="tag top">★ Top</span>' : ""}${p.rank ? `<span class="tag">#${p.rank}</span>` : ""}</div>
+        <span class="chip year">${p.draft}</span>${top ? '<span class="chip top">Top</span>' : ""}${p.rank ? `<span class="chip">#${p.rank}</span>` : ""}</div>
       <div class="meta">${esc(p.pos)} · ${esc(p.nation)}</div>
     </div>
   </div>`;
@@ -114,7 +168,7 @@ function renderCol(el, team) {
     .filter(p => activeYears.has(p.draft))
     .sort((a, b) => (parseInt(a.number) || 999) - (parseInt(b.number) || 999));
   el.innerHTML = `<h2>${esc(team)}</h2>` +
-    (players.length ? players.map(playerCard).join("") : `<div class="empty">Brak prospektów z wybranych roczników.</div>`);
+    (players.length ? players.map(playerCard).join("") : `<div class="empty">Brak prospektów</div>`);
 }
 
 function render() {
@@ -126,14 +180,15 @@ $("league").onchange = () => { store.set("league", $("league").value); renderTea
 for (const id of ["teamA", "teamB"]) $(id).onchange = () => {
   store.set("teams:" + $("league").value, [$("teamA").value, $("teamB").value]); render();
 };
-$("years").onchange = e => {
-  const y = +e.target.value;
-  e.target.checked ? activeYears.add(y) : activeYears.delete(y);
+$("years").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const y = +b.dataset.year;
+  activeYears.has(y) ? activeYears.delete(y) : activeYears.add(y);
+  b.setAttribute("aria-pressed", activeYears.has(y));
   store.set("years", [...activeYears]); render();
 };
 
 renderLeagues(); renderTeams(); renderYears(); render();
-$("footer").textContent = `Dane: EliteProspects Draft Center + składy lig · aktualizacja ${new Date(D.updated).toLocaleString("pl-PL")}`;
 </script>
 </body>
 </html>
