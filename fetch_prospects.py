@@ -7,10 +7,13 @@
 
 Numery:
   - OHL / WHL / QMJHL / USHL - automatycznie z oficjalnych składów (HockeyTech),
-  - pozostałe ligi - ręcznie w data/manual_numbers.json:  {"<ep_id>": "17", ...}
-    (wpis ręczny ma pierwszeństwo także przed automatem).
+  - pozostałe ligi - ręcznie w kolumnie "numer" w data/manual_numbers.csv
+    (wpis ręczny ma pierwszeństwo przed automatem). Skrypt sam dopisuje do CSV
+    nowych zawodników bez numeru i nie rusza istniejących wierszy.
 """
+import csv
 import json
+import re
 import sys
 import unicodedata
 import urllib.parse
@@ -24,7 +27,8 @@ from ep_parse import load_all
 ROOT = Path(__file__).parent
 DATA = ROOT / "data"
 OUT = DATA / "prospects.js"
-MANUAL = DATA / "manual_numbers.json"
+MANUAL = DATA / "manual_numbers.csv"
+CSV_COLS = ["zawodnik", "liga", "druzyna", "draft", "eliteprospects", "numer"]
 
 # Publiczne klucze, których używają oficjalne strony lig. Klucz = nazwa ligi jak na EP.
 HOCKEYTECH = {
@@ -87,11 +91,32 @@ def match(prospect: dict, roster: list[dict]):
     return same[0] if len(same) == 1 else None
 
 
+def ep_id_from_url(url: str):
+    m = re.search(r"/player/(\d+)", url or "")
+    return m.group(1) if m else None
+
+
+def read_manual() -> list[dict]:
+    if not MANUAL.exists():
+        return []
+    with MANUAL.open(encoding="utf-8-sig", newline="") as fh:
+        return list(csv.DictReader(fh))
+
+
+def write_manual(rows: list[dict]):
+    with MANUAL.open("w", encoding="utf-8-sig", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=CSV_COLS, extrasaction="ignore", lineterminator="\n")
+        w.writeheader()
+        w.writerows(rows)
+
+
 def main():
     prospects = load_all(DATA)
     if not prospects:
         sys.exit("Brak plików data/<rok>prospects.html")
-    manual = json.loads(MANUAL.read_text(encoding="utf-8")) if MANUAL.exists() else {}
+    manual_rows = read_manual()
+    manual = {ep_id_from_url(r.get("eliteprospects")): (r.get("numer") or "").strip().lstrip("#")
+              for r in manual_rows}
 
     src = lambda lg: ROSTER_ALIAS.get(lg, lg)
     needed = {src(p["league"]) for p in prospects} & HOCKEYTECH.keys()
@@ -121,11 +146,16 @@ def main():
             "leagues": leagues}
     OUT.write_text("window.PROSPECTS = " + json.dumps(data, ensure_ascii=False) + ";\n", encoding="utf-8")
 
+    new_rows = [{"zawodnik": p["name"], "liga": p["league"], "druzyna": p["team"], "draft": p["draft"],
+                 "eliteprospects": p["ep_url"], "numer": ""}
+                for p in sorted(unmatched, key=lambda x: (x["league"], x["team"], x["name"]))
+                if p["ep_id"] not in manual]
+    if new_rows or not MANUAL.exists():
+        write_manual(manual_rows + new_rows)
+
     print(f"Prospektów: {len(prospects)}, z numerem: {len(prospects) - len(unmatched)}")
     if unmatched:
-        print("\nBez numeru (dopisz do data/manual_numbers.json jako \"ep_id\": \"numer\"):")
-        for p in sorted(unmatched, key=lambda x: (x["league"], x["team"])):
-            print(f'  {p["ep_id"]:>8}  {p["league"]:<18} {p["team"]:<32} {p["name"]}')
+        print(f"Bez numeru: {len(unmatched)} (nowych w {MANUAL.name}: {len(new_rows)}) - uzupełnij kolumnę 'numer'")
     print(f"\nZapisano {OUT}")
 
 
