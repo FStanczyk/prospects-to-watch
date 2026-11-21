@@ -94,24 +94,79 @@
   .chip.top { background: var(--lime); color: var(--ink); }
 
   .empty { color: var(--muted); padding: 8px 0; }
+
+  .tabs { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 16px; background: var(--chip); border-radius: 999px; }
+  .tabs button {
+    font: inherit; font-weight: 700; padding: 7px 16px; border-radius: 999px; cursor: pointer;
+    background: transparent; color: var(--muted); border: 0;
+  }
+  .tabs button[aria-selected="true"] { background: var(--surface); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  [hidden] { display: none !important; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; margin: -12px 0 24px; }
+  .filters button {
+    font: inherit; font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+    background: transparent; color: var(--muted); border: 1px solid var(--line);
+  }
+  .filters button[aria-pressed="true"] { background: var(--steel); color: #fff; border-color: var(--steel); }
+  .filters button.top[aria-pressed="true"] { background: var(--lime); color: var(--ink); border-color: var(--lime); }
+
+  .day { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; margin: 24px 0 10px; }
+  .day:first-child { margin-top: 0; }
+  .game { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 8px; }
+  .game-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .game-time { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .game-status { color: var(--muted); font-size: 13px; }
+  .game-open { margin-left: auto; font: inherit; font-size: 13px; font-weight: 700; color: var(--steel); background: none; border: 0; cursor: pointer; padding: 4px; }
+  .game-open:hover { color: var(--fg); }
+  .sides { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; }
+  @media (max-width: 560px) { .sides { grid-template-columns: minmax(0,1fr); gap: 10px; } }
+  .side-name { font-weight: 800; margin-bottom: 6px; }
+  .side-name small { color: var(--muted); font-weight: 500; }
+  .mini { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 14px; }
+  .mini b {
+    flex: none; min-width: 30px; height: 26px; padding: 0 4px; border-radius: 6px; display: grid; place-items: center;
+    background: var(--green); color: var(--ink); font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums;
+  }
+  .mini.top b { background: var(--lime); }
+  .mini b.none { background: var(--chip); color: var(--muted); }
+  .mini a { color: inherit; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini a:hover { color: var(--steel); }
+  .more { display: block; margin: 16px auto 0; font: inherit; font-weight: 700; padding: 10px 18px; border-radius: 999px;
+    background: var(--surface); color: var(--fg); border: 1px solid var(--line); cursor: pointer; }
+  .updated { color: var(--muted); font-size: 12px; margin-top: 24px; }
 </style>
 </head>
 <body>
 <main>
   <h1>Prospects to Watch</h1>
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" data-view="teams">Drużyny</button>
+    <button type="button" role="tab" data-view="calendar">Kalendarz</button>
+  </div>
+  <div id="viewTeams">
   <div class="controls">
     <select id="league" aria-label="Liga"></select>
     <select id="teamA" aria-label="Drużyna 1"></select>
     <select id="teamB" aria-label="Drużyna 2"></select>
   </div>
+  </div>
   <div class="years" id="years"></div>
+  <div id="viewTeamsBody">
   <div class="cols">
     <section id="colA"></section>
     <section id="colB"></section>
   </div>
+  </div>
+  <div id="viewCalendar" hidden>
+    <div class="filters" id="calFilters"></div>
+    <div id="calList"></div>
+    <div class="updated" id="calUpdated"></div>
+  </div>
 </main>
 
 <script src="data/prospects.js"></script>
+<script src="data/schedule.js"></script>
 <script>
 const D = window.PROSPECTS;
 const $ = id => document.getElementById(id);
@@ -185,10 +240,108 @@ $("years").onclick = e => {
   const y = +b.dataset.year;
   activeYears.has(y) ? activeYears.delete(y) : activeYears.add(y);
   b.setAttribute("aria-pressed", activeYears.has(y));
-  store.set("years", [...activeYears]); render();
+  store.set("years", [...activeYears]); render(); renderCalendar();
 };
 
-renderLeagues(); renderTeams(); renderYears(); render();
+// ---------- Kalendarz ----------
+const S = window.SCHEDULE || { games: [] };
+const calLeagues = [...new Set(S.games.map(g => g.league))].sort();
+let calOff = new Set(store.get("calOff", []));       // odznaczone ligi
+let calTop = store.get("calTop", false);              // tylko mecze z "Top Prospects"
+let calDays = 7;
+const isTop = p => p.tier.toLowerCase().startsWith("top");
+const dayKey = d => d.toLocaleDateString("sv-SE");    // YYYY-MM-DD w lokalnej strefie
+
+function sidePlayers(side) {
+  return side.refs.flatMap(([l, t]) => (D.leagues[l] || {})[t] || [])
+    .filter(p => activeYears.has(p.draft))
+    .sort((a, b) => isTop(b) - isTop(a) || (parseInt(a.number) || 999) - (parseInt(b.number) || 999));
+}
+
+// Liga do widoku "Drużyny": najlepiej taka, w której obie drużyny mają prospektów
+function teamsLink(g) {
+  const pick = (side, l) => side.refs.find(r => r[0] === l)?.[1] || "";
+  const ls = [...new Set([...g.home.refs, ...g.away.refs].map(r => r[0]))];
+  const l = ls.find(l => pick(g.home, l) && pick(g.away, l)) ?? ls[0];
+  return l ? { league: l, a: pick(g.away, l), b: pick(g.home, l) } : null;
+}
+
+function miniCard(p) {
+  return `<div class="mini${isTop(p) ? " top" : ""}"><b class="${p.number ? "" : "none"}">${p.number ? esc(p.number) : "?"}</b>
+    <a href="${esc(p.ep_url)}" target="_blank" rel="noopener">${esc(p.name)}</a>
+    <span class="chip year">${p.draft}</span></div>`;
+}
+
+function renderCalFilters() {
+  $("calFilters").innerHTML = calLeagues.map(l =>
+    `<button type="button" data-league="${esc(l)}" aria-pressed="${!calOff.has(l)}">${esc(l)}</button>`).join("") +
+    `<button type="button" class="top" data-top aria-pressed="${calTop}">Tylko Top</button>`;
+}
+
+function renderCalendar() {
+  if ($("viewCalendar").hidden) return;
+  const today = dayKey(new Date());
+  const games = S.games.map(g => ({ ...g, d: new Date(g.start), ha: sidePlayers(g.home), aa: sidePlayers(g.away) }))
+    .filter(g => !g.final && !/postpon|cancel|report/i.test(g.status) && !calOff.has(g.league) && dayKey(g.d) >= today && g.ha.length + g.aa.length > 0
+      && (!calTop || [...g.ha, ...g.aa].some(isTop)));
+  const days = [...new Set(games.map(g => dayKey(g.d)))];
+  const shown = new Set(days.slice(0, calDays));
+  const fmtDay = new Intl.DateTimeFormat("pl-PL", { weekday: "long", day: "numeric", month: "long" });
+  const fmtTime = new Intl.DateTimeFormat("pl-PL", { hour: "2-digit", minute: "2-digit" });
+  const tomorrow = dayKey(new Date(Date.now() + 864e5));
+  let html = "", last = "";
+  games.forEach((g, i) => {
+    const k = dayKey(g.d);
+    if (!shown.has(k)) return;
+    if (k !== last) {
+      const txt = fmtDay.format(g.d);
+      const label = k === today ? "Dziś · " + txt : k === tomorrow ? "Jutro · " + txt : txt[0].toUpperCase() + txt.slice(1);
+      html += `<div class="day">${label}</div>`; last = k;
+    }
+    const side = (s, list) => `<div><div class="side-name">${esc(s.name)} <small>${s === g.home ? "dom" : "wyjazd"}</small></div>
+      ${list.length ? list.map(miniCard).join("") : `<div class="empty">—</div>`}</div>`;
+    const live = !/(am|pm)/i.test(g.status);  // np. "2nd Period" zamiast godziny
+    html += `<div class="game">
+      <div class="game-head"><span class="game-time">${g.tbd ? "TBD" : fmtTime.format(g.d)}</span>
+        <span class="chip">${esc(g.league)}</span>
+        ${live && g.status ? `<span class="game-status">${esc(g.status)}</span>` : ""}
+        ${teamsLink(g) ? `<button type="button" class="game-open" data-i="${i}">Pokaż składy →</button>` : ""}</div>
+      <div class="sides">${side(g.away, g.aa)}${side(g.home, g.ha)}</div>
+    </div>`;
+  });
+  html ||= `<div class="empty">Brak meczów z prospektami dla wybranych filtrów.</div>`;
+  if (days.length > calDays) html += `<button type="button" class="more" id="calMore">Pokaż kolejne dni</button>`;
+  $("calList").innerHTML = html;
+  $("calList").games = games;
+  const upd = S.updated ? new Date(S.updated).toLocaleString("pl-PL", { dateStyle: "medium", timeStyle: "short" }) : "—";
+  $("calUpdated").textContent = `Terminarz: OHL, WHL, QMJHL, USHL (z NTDP). Godziny w Twojej strefie czasowej. Aktualizacja: ${upd}.`;
+}
+
+$("calFilters").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if ("top" in b.dataset) { calTop = !calTop; store.set("calTop", calTop); }
+  else { const l = b.dataset.league; calOff.has(l) ? calOff.delete(l) : calOff.add(l); store.set("calOff", [...calOff]); }
+  renderCalFilters(); renderCalendar();
+};
+$("calList").onclick = e => {
+  if (e.target.id === "calMore") { calDays += 7; renderCalendar(); return; }
+  const b = e.target.closest(".game-open"); if (!b) return;
+  const link = teamsLink($("calList").games[+b.dataset.i]);
+  store.set("league", link.league);
+  store.set("teams:" + link.league, [link.a, link.b]);
+  renderLeagues(); renderTeams(); setView("teams"); render(); scrollTo(0, 0);
+};
+
+function setView(v) {
+  store.set("view", v);
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.view === v));
+  $("viewCalendar").hidden = v !== "calendar";
+  for (const id of ["viewTeams", "viewTeamsBody"]) $(id).hidden = v !== "teams";
+  renderCalendar();
+}
+document.querySelector(".tabs").onclick = e => { const b = e.target.closest("button"); if (b) setView(b.dataset.view); };
+
+renderLeagues(); renderTeams(); renderYears(); render(); renderCalFilters(); setView(store.get("view", "teams"));
 </script>
 </body>
 </html>

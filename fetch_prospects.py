@@ -10,8 +10,12 @@ Numery:
   - pozostałe ligi - ręcznie w kolumnie "numer" w data/manual_numbers.csv
     (wpis ręczny ma pierwszeństwo przed automatem). Skrypt sam dopisuje do CSV
     nowych zawodników bez numeru i nie rusza istniejących wierszy.
+
+Terminarz (data/schedule.js): mecze lig HockeyTech na SCHEDULE_DAYS dni naprzód,
+w których gra choć jeden prospekt.
 """
 import csv
+import difflib
 import json
 import re
 import sys
@@ -19,7 +23,8 @@ import unicodedata
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timezone
+from collections import Counter
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from ep_parse import load_all
@@ -27,6 +32,8 @@ from ep_parse import load_all
 ROOT = Path(__file__).parent
 DATA = ROOT / "data"
 OUT = DATA / "prospects.js"
+SCHEDULE_OUT = DATA / "schedule.js"
+SCHEDULE_DAYS = 60
 MANUAL = DATA / "manual_numbers.csv"
 CSV_COLS = ["zawodnik", "liga", "druzyna", "draft", "eliteprospects", "numer"]
 
@@ -56,8 +63,8 @@ def api(league: dict, **params):
         return json.load(r)["SiteKit"]
 
 
-def fetch_rosters(league: dict) -> list[dict]:
-    """Wszyscy zawodnicy bieżącego sezonu zasadniczego: [{name, team, number, ...}]."""
+def fetch_league(league: dict) -> dict:
+    """Bieżący sezon zasadniczy: drużyny, składy [{name, team, team_id, number, ...}] i terminarz."""
     today = date.today().isoformat()
     seasons = [s for s in api(league, view="seasons")["Seasons"]
                if s["career"] == "1" and s["playoff"] == "0" and s["start_date"] <= today]
@@ -68,10 +75,69 @@ def fetch_rosters(league: dict) -> list[dict]:
         return api(league, view="roster", season_id=sid, team_id=t["id"]).get("Roster", [])
 
     with ThreadPoolExecutor(max_workers=6) as pool:
-        rosters = pool.map(roster, teams)
-    return [{"name": f'{p["first_name"]} {p["last_name"]}', "team": p.get("team_name", ""),
-             "number": p.get("tp_jersey_number") or "", "birthdate": p.get("birthdate") or ""}
-            for r in rosters for p in r if isinstance(p, dict) and p.get("position")]
+        rosters = list(pool.map(roster, teams))
+    players = [{"name": f'{p["first_name"]} {p["last_name"]}', "team": p.get("team_name", ""),
+                "team_id": t["id"], "number": p.get("tp_jersey_number") or "",
+                "birthdate": p.get("birthdate") or ""}
+               for t, r in zip(teams, rosters) for p in r if isinstance(p, dict) and p.get("position")]
+    try:
+        games = api(league, view="schedule", season_id=sid).get("Schedule", [])
+    except Exception as e:
+        print(f'{league["client_code"]}: błąd pobierania terminarza: {e}', file=sys.stderr)
+        games = []
+    return {"teams": teams, "roster": players, "games": games}
+
+
+def team_ids(prospects: list[dict], ht_league: str, teams: list[dict]) -> dict:
+    """(liga EP, drużyna EP) -> id drużyny HockeyTech: z dopasowanych składów, potem po nazwie."""
+    votes = {}
+    for p in prospects:
+        if p.get("_ht") == ht_league and p.get("_team_id"):
+            votes.setdefault((p["league"], p["team"]), Counter())[p["_team_id"]] += 1
+    out = {k: c.most_common(1)[0][0] for k, c in votes.items()}
+    by_name = {norm(t["name"]): t["id"] for t in teams}
+    for p in prospects:
+        key = (p["league"], p["team"])
+        if p.get("_ht") != ht_league or key in out:
+            continue
+        close = difflib.get_close_matches(norm(p["team"]), by_name, n=1, cutoff=0.75)
+        if close:
+            out[key] = by_name[close[0]]
+        else:
+            print(f"{ht_league}: nie znaleziono drużyny {p['team']} w terminarzu", file=sys.stderr)
+    return out
+
+
+def team_label(name: str) -> str:
+    """QMJHL podaje "Saint John, Sea Dogs" - ujednolicamy do "Saint John Sea Dogs"."""
+    return re.sub(r",\s*", " ", name).strip()
+
+
+def build_schedule(prospects: list[dict], data: dict) -> list[dict]:
+    today = date.today()
+    until = (today + timedelta(days=SCHEDULE_DAYS)).isoformat()
+    since = (today - timedelta(days=1)).isoformat()
+    games = []
+    for lg, d in data.items():
+        refs = {}  # team_id -> [[liga EP, drużyna EP], ...]
+        for key, tid in team_ids(prospects, lg, d["teams"]).items():
+            refs.setdefault(tid, []).append(list(key))
+        for g in d["games"]:
+            if not (since <= g["date_played"] <= until) or g.get("date_tbd") == "1":
+                continue
+            home, away = g["home_team"], g["visiting_team"]
+            if home not in refs and away not in refs:
+                continue
+            games.append({
+                "id": g["game_id"], "league": lg,
+                "start": g["GameDateISO8601"], "tbd": g.get("time_tbd") == "1",
+                "status": g.get("game_status", ""), "final": g.get("final") == "1",
+                "venue": g.get("venue_location") or g.get("venue_name") or "",
+                "home": {"name": team_label(g["home_team_name"]), "refs": refs.get(home, [])},
+                "away": {"name": team_label(g["visiting_team_name"]), "refs": refs.get(away, [])},
+            })
+    games.sort(key=lambda g: (datetime.fromisoformat(g["start"]), g["league"]))
+    return games
 
 
 def match(prospect: dict, roster: list[dict]):
@@ -120,23 +186,30 @@ def main():
 
     src = lambda lg: ROSTER_ALIAS.get(lg, lg)
     needed = {src(p["league"]) for p in prospects} & HOCKEYTECH.keys()
-    rosters = {}
+    ht_data = {}
     for lg in sorted(needed):
         try:
-            rosters[lg] = fetch_rosters(HOCKEYTECH[lg])
+            ht_data[lg] = fetch_league(HOCKEYTECH[lg])
         except Exception as e:
             print(f"{lg}: błąd pobierania składów: {e}", file=sys.stderr)
+    rosters = {lg: d["roster"] for lg, d in ht_data.items()}
 
     unmatched = []
     for p in prospects:
         p["number"], p["birthdate"], p["number_src"] = "", "", ""
         hit = match(p, rosters[src(p["league"])]) if src(p["league"]) in rosters else None
+        p["_ht"] = src(p["league"]) if src(p["league"]) in ht_data else None
         if hit:
             p["number"], p["birthdate"], p["number_src"] = hit["number"], hit["birthdate"], "auto"
+            p["_team_id"] = hit["team_id"]
         if manual.get(p["ep_id"]):
             p["number"], p["number_src"] = str(manual[p["ep_id"]]), "manual"
         if not p["number"]:
             unmatched.append(p)
+
+    games = build_schedule(prospects, ht_data)
+    for p in prospects:
+        p.pop("_ht", None), p.pop("_team_id", None)
 
     leagues = {}
     for p in prospects:
@@ -156,7 +229,10 @@ def main():
     print(f"Prospektów: {len(prospects)}, z numerem: {len(prospects) - len(unmatched)}")
     if unmatched:
         print(f"Bez numeru: {len(unmatched)} (nowych w {MANUAL.name}: {len(new_rows)}) - uzupełnij kolumnę 'numer'")
-    print(f"\nZapisano {OUT}")
+    SCHEDULE_OUT.write_text("window.SCHEDULE = " + json.dumps(
+        {"updated": data["updated"], "games": games}, ensure_ascii=False) + ";\n", encoding="utf-8")
+    print(f"Meczów z prospektami (najbliższe {SCHEDULE_DAYS} dni): {len(games)}")
+    print(f"\nZapisano {OUT}, {SCHEDULE_OUT}")
 
 
 if __name__ == "__main__":
